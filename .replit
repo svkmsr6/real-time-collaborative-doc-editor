@@ -2,7 +2,7 @@
 channel = "stable-23_11"
 
 [deployment]
-run = ["python3", "main.py"]
+run = ["sh", "-c", "python3 start_server.py"]
 deploymentTarget = "cloudrun"
 
 [[ports]]
