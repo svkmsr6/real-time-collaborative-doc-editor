@@ -382,6 +382,12 @@ def get_audit(doc_id):
         print(f"Error type: {type(e).__name__}")
         return jsonify({"error": "Failed to get audit log"}), 500
 
+# Debug: Print registered routes
+print("🔍 Registered Flask routes:")
+for rule in app.url_map.iter_rules():
+    methods = ','.join(rule.methods - {'OPTIONS', 'HEAD'})
+    print(f"   {methods:<10} {rule.rule}")
+
 # Export the app for external imports
 __all__ = ['app']
 
