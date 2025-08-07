@@ -125,6 +125,7 @@ except Exception as e:
 # --- Full-text search: CONFIGURE Redisearch index on document fields
 def create_search_index():
     """Create a Redisearch index for document fields."""
+    global SEARCH_AVAILABLE
     if not SEARCH_AVAILABLE:
         print("⚠️  Skipping search index creation - Redis Search not available")
         return
@@ -164,7 +165,6 @@ def create_search_index():
         else:
             print(f"❌ Error creating search index: {e}")
             print("⚠️  Continuing without search functionality")
-            global SEARCH_AVAILABLE
             SEARCH_AVAILABLE = False
     except Exception as e:
         print(f"⚠️  Search index creation failed: {e}")
