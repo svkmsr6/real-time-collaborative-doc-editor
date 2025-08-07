@@ -21,28 +21,33 @@ IndexDefinition = None
 IndexType = None
 field = None
 
-# Strategy 1: Try modern redis-py with search
+# Strategy 1: Try modern redis-py with search (version 5.x)
 try:
     from redis.commands.search.field import TextField
-    from redis.commands.search.indexDefinition import IndexDefinition, IndexType
-    import redis.commands.search.query as query
+    from redis.commands.search import IndexDefinition, IndexType
     SEARCH_AVAILABLE = True
-    print("✅ Redis Search modules imported successfully (modern redis-py)")
+    print("✅ Redis Search modules imported successfully (redis-py 5.x)")
 except ImportError:
     try:
-        # Strategy 2: Try redisearch-py package
-        from redisearch import Client, TextField, IndexDefinition
+        # Strategy 2: Try older redis-py search syntax
+        from redis.commands.search.field import TextField
+        from redis.commands.search.indexDefinition import IndexDefinition, IndexType
         SEARCH_AVAILABLE = True
-        print("✅ Redis Search modules imported successfully (redisearch-py)")
+        print("✅ Redis Search modules imported successfully (redis-py older)")
     except ImportError:
         try:
-            # Strategy 3: Try redis-om for search capabilities
-            from redis_om import get_redis_connection
-            import redis_om
+            # Strategy 3: Direct FT commands (fallback)
             SEARCH_AVAILABLE = True
-            print("✅ Redis Search available via redis-om")
+            TextField = None
+            IndexDefinition = None
+            IndexType = None
+            print("✅ Using direct FT commands for Redis Search")
         except ImportError as e:
-            print(f"⚠️  Redis Search not available - search functionality will be limited: {e}")
+            SEARCH_AVAILABLE = False
+            TextField = None
+            IndexDefinition = None
+            IndexType = None
+            print(f"⚠️  Redis Search not available: {e}")
 
 app = Flask(__name__)
 # Configure CORS for Replit and web access

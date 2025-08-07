@@ -1,8 +1,7 @@
 
 Flask==3.1.1
 flask-cors==6.0.1
-redis==6.3.0
-redisearch==2.2.4
+redis==5.0.1
 hiredis==2.2.3
 python-dotenv==1.1.1
 requests==2.32.4
