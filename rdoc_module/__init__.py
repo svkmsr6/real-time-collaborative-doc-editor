@@ -14,7 +14,16 @@ import redis
 import dotenv
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from redis.commands.search.index_definition import IndexDefinition, IndexType
+
+# Try to import Redis Search components with fallback
+try:
+    from redis.commands.search.index_definition import IndexDefinition, IndexType
+    from redis.commands.search import field
+    SEARCH_AVAILABLE = True
+except ImportError:
+    # Fallback for older redis versions or when search is not available
+    SEARCH_AVAILABLE = False
+    print("⚠️  Redis Search not available - search functionality will be limited")
 
 app = Flask(__name__)
 # Configure CORS for Replit and web access
@@ -92,10 +101,14 @@ except Exception as e:
 # --- Full-text search: CONFIGURE Redisearch index on document fields
 def create_search_index():
     """Create a Redisearch index for document fields."""
+    if not SEARCH_AVAILABLE:
+        print("⚠️  Skipping search index creation - Redis Search not available")
+        return
+        
     try:
         r.ft('idx:docs').create_index([
-            redis.commands.search.field.TextField('$.title', as_name='title'),
-            redis.commands.search.field.TextField('$.body', as_name='body'),
+            field.TextField('$.title', as_name='title'),
+            field.TextField('$.body', as_name='body'),
         ],
         definition = IndexDefinition(prefix=['doc:'], index_type=IndexType.JSON))
         print("✅ Search index created successfully")
@@ -104,7 +117,11 @@ def create_search_index():
             print("ℹ️  Search index already exists")
         else:
             print(f"❌ Error creating search index: {e}")
-            raise
+            # Don't raise - continue without search
+            print("⚠️  Continuing without search functionality")
+    except Exception as e:
+        print(f"⚠️  Search index creation failed: {e}")
+        print("⚠️  Continuing without search functionality")
 
 create_search_index()
 
@@ -207,6 +224,9 @@ def search_docs():
     query = request.args.get('q', '')
     if not query:
         return jsonify([])
+
+    if not SEARCH_AVAILABLE:
+        return jsonify({"error": "Search functionality not available"}), 503
 
     try:
         # Use wildcard search for full-text search
