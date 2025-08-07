@@ -15,19 +15,34 @@ import dotenv
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-# Try to import Redis Search components with fallback
+# Try multiple Redis Search import strategies
+SEARCH_AVAILABLE = False
+IndexDefinition = None
+IndexType = None
+field = None
+
+# Strategy 1: Try modern redis-py with search
 try:
-    from redis.commands.search.index_definition import IndexDefinition, IndexType
-    from redis.commands.search import field
+    from redis.commands.search.field import TextField
+    from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+    import redis.commands.search.query as query
     SEARCH_AVAILABLE = True
-    print("✅ Redis Search modules imported successfully")
-except ImportError as e:
-    # Fallback for older redis versions or when search is not available
-    SEARCH_AVAILABLE = False
-    IndexDefinition = None
-    IndexType = None
-    field = None
-    print(f"⚠️  Redis Search not available - search functionality will be limited: {e}")
+    print("✅ Redis Search modules imported successfully (modern redis-py)")
+except ImportError:
+    try:
+        # Strategy 2: Try redisearch-py package
+        from redisearch import Client, TextField, IndexDefinition
+        SEARCH_AVAILABLE = True
+        print("✅ Redis Search modules imported successfully (redisearch-py)")
+    except ImportError:
+        try:
+            # Strategy 3: Try redis-om for search capabilities
+            from redis_om import get_redis_connection
+            import redis_om
+            SEARCH_AVAILABLE = True
+            print("✅ Redis Search available via redis-om")
+        except ImportError as e:
+            print(f"⚠️  Redis Search not available - search functionality will be limited: {e}")
 
 app = Flask(__name__)
 # Configure CORS for Replit and web access
@@ -105,27 +120,51 @@ except Exception as e:
 # --- Full-text search: CONFIGURE Redisearch index on document fields
 def create_search_index():
     """Create a Redisearch index for document fields."""
-    if not SEARCH_AVAILABLE or not IndexDefinition or not field:
-        print("⚠️  Skipping search index creation - Redis Search modules not available")
+    if not SEARCH_AVAILABLE:
+        print("⚠️  Skipping search index creation - Redis Search not available")
         return
         
     try:
-        r.ft('idx:docs').create_index([
-            field.TextField('$.title', as_name='title'),
-            field.TextField('$.body', as_name='body'),
-        ],
-        definition = IndexDefinition(prefix=['doc:'], index_type=IndexType.JSON))
-        print("✅ Search index created successfully")
+        # Try to create index using raw Redis commands for maximum compatibility
+        # This works with most Redis instances that support FT commands
+        try:
+            # Try to create JSON index using FT.CREATE command directly
+            r.execute_command(
+                'FT.CREATE', 'idx:docs',
+                'ON', 'JSON',
+                'PREFIX', '1', 'doc:',
+                'SCHEMA',
+                '$.title', 'AS', 'title', 'TEXT',
+                '$.body', 'AS', 'body', 'TEXT'
+            )
+            print("✅ Search index created successfully using FT.CREATE")
+        except redis.ResponseError as e:
+            if "Index already exists" in str(e):
+                print("ℹ️  Search index already exists")
+            else:
+                # Try alternative approach for Hash-based indexing
+                print(f"JSON indexing failed, trying hash-based approach: {e}")
+                r.execute_command(
+                    'FT.CREATE', 'idx:docs_hash',
+                    'ON', 'HASH',
+                    'PREFIX', '1', 'doc:',
+                    'SCHEMA',
+                    'title', 'TEXT',
+                    'body', 'TEXT'
+                )
+                print("✅ Search index created successfully using HASH indexing")
     except redis.ResponseError as e:
         if "Index already exists" in str(e):
             print("ℹ️  Search index already exists")
         else:
             print(f"❌ Error creating search index: {e}")
-            # Don't raise - continue without search
             print("⚠️  Continuing without search functionality")
+            global SEARCH_AVAILABLE
+            SEARCH_AVAILABLE = False
     except Exception as e:
         print(f"⚠️  Search index creation failed: {e}")
         print("⚠️  Continuing without search functionality")
+        SEARCH_AVAILABLE = False
 
 create_search_index()
 
@@ -233,21 +272,32 @@ def search_docs():
         return jsonify({"error": "Search functionality not available"}), 503
 
     try:
-        # Use wildcard search for full-text search
-        # Redisearch supports full-text search with wildcards
-        results = r.ft('idx:docs').search(query)
+        # Use FT.SEARCH command directly for maximum compatibility
+        search_query = f"*{query}*"  # Wildcard search
+        
+        try:
+            # Try JSON index first
+            results = r.execute_command('FT.SEARCH', 'idx:docs', search_query)
+        except:
+            # Fallback to hash index
+            results = r.execute_command('FT.SEARCH', 'idx:docs_hash', search_query)
+        
         docs = []
-        for doc in results.docs:
-            try:
-                # Get JSON data from Redis
-                json_data = r.json().get(doc.id, '$')
-                if json_data and len(json_data) > 0:
-                    # json_data is a list, get the first element
-                    parsed_doc = json_data[0] if isinstance(json_data, list) else json_data
-                    docs.append(parsed_doc)
-            except Exception as e:
-                print(f"Error parsing document {doc.id}: {e}")
-                continue
+        if len(results) > 1:  # First element is count
+            # Parse results (skip count at index 0)
+            for i in range(1, len(results), 2):
+                doc_id = results[i].decode('utf-8') if isinstance(results[i], bytes) else results[i]
+                try:
+                    # Get JSON data from Redis
+                    json_data = r.json().get(doc_id, '$')
+                    if json_data and len(json_data) > 0:
+                        # json_data is a list, get the first element
+                        parsed_doc = json_data[0] if isinstance(json_data, list) else json_data
+                        docs.append(parsed_doc)
+                except Exception as e:
+                    print(f"Error parsing document {doc_id}: {e}")
+                    continue
+        
         return jsonify(docs)
     except Exception as e:
         print(f"Search error: {e}")
