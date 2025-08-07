@@ -1,6 +1,5 @@
-modules = ["python-3.12", "nix"]
 [nix]
-channel = "stable-25_05"
+channel = "stable-23_11"
 
 [deployment]
 run = ["python3", "main.py"]
