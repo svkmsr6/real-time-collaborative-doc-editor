@@ -382,6 +382,9 @@ def get_audit(doc_id):
         print(f"Error type: {type(e).__name__}")
         return jsonify({"error": "Failed to get audit log"}), 500
 
+# Export the app for external imports
+__all__ = ['app']
+
 if __name__ == '__main__':
     threading.Thread(target=listen_for_doc_updates, args=(1,)).start()
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)

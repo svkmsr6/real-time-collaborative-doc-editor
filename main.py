@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """
 Main entry point for Replit deployment
@@ -10,19 +11,19 @@ import sys
 # Set environment variables for Replit
 os.environ['FLASK_ENV'] = 'production'
 
-# Import and configure the Flask app
-try:
-    from rdoc_module import app
-    print("✅ Flask app imported successfully")
-except ImportError as e:
-    print(f"❌ Failed to import rdoc_module: {e}")
-    print("💡 Make sure all dependencies are installed")
-    sys.exit(1)
-
 def main():
     """Start the Flask server for Replit."""
     print("🚀 Starting Redis Document Management Server on Replit")
     print("=" * 60)
+
+    # Import and configure the Flask app
+    try:
+        from rdoc_module import app
+        print("✅ Flask app imported successfully")
+    except ImportError as e:
+        print(f"❌ Failed to import rdoc_module: {e}")
+        print("💡 Make sure all dependencies are installed")
+        sys.exit(1)
 
     # Get port from environment (Replit sets this automatically)
     port = int(os.environ.get('PORT', 5000))
@@ -30,7 +31,9 @@ def main():
 
     print(f"🌐 Starting server on {host}:{port}")
     print("📋 Available endpoints:")
+    print("   GET    /                  - Health check")
     print("   POST   /docs              - Create document")
+    print("   GET    /docs/<id>         - Get document")
     print("   PUT    /docs/<id>         - Update document") 
     print("   GET    /docs/search?q=... - Search documents")
     print("   GET    /docs/<id>/audit   - Get document history")
