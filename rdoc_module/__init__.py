@@ -221,6 +221,28 @@ def create_doc():
         print(f"Error creating document: {e}")
         return jsonify({"error": "Failed to create document"}), 500
 
+# --- Get Document
+@app.route('/docs/<int:doc_id>', methods=['GET'])
+def get_doc(doc_id):
+    """Get a specific document by ID."""
+    try:
+        if doc_id <= 0:
+            return jsonify({"error": "Invalid document ID"}), 400
+
+        doc_key = f'doc:{doc_id}'
+        if not r.exists(doc_key):
+            return jsonify({"error": "Document not found"}), 404
+
+        json_data = r.json().get(doc_key, '$')
+        if json_data and len(json_data) > 0:
+            doc = json_data[0] if isinstance(json_data, list) else json_data
+            return jsonify(doc), 200
+        else:
+            return jsonify({"error": "Document not found"}), 404
+    except Exception as e:
+        print(f"Error getting document {doc_id}: {e}")
+        return jsonify({"error": "Failed to get document"}), 500
+
 # --- Edit Document and Broadcast to Pub/Sub, Store in Stream
 @app.route('/docs/<int:doc_id>', methods=['PUT'])
 def update_doc(doc_id):
@@ -266,26 +288,30 @@ def listen_for_doc_updates(doc_id):
         print(f"Update: {msg['data']}") # In prod, emit to frontend via websocket
 
 # --- Full-Text Search
-@app.route('/docs/search')
+@app.route('/docs/search', methods=['GET'])
 def search_docs():
     """Search documents using Redisearch."""
-    query = request.args.get('q', '')
-    if not query:
-        return jsonify([])
-
-    if not SEARCH_AVAILABLE:
-        return jsonify({"error": "Search functionality not available"}), 503
-
     try:
+        query = request.args.get('q', '').strip()
+        if not query:
+            return jsonify([]), 200
+
+        if not SEARCH_AVAILABLE:
+            return jsonify({"error": "Search functionality not available"}), 503
+
         # Use FT.SEARCH command directly for maximum compatibility
         search_query = f"*{query}*"  # Wildcard search
         
         try:
             # Try JSON index first
             results = r.execute_command('FT.SEARCH', 'idx:docs', search_query)
-        except:
-            # Fallback to hash index
-            results = r.execute_command('FT.SEARCH', 'idx:docs_hash', search_query)
+        except Exception as json_error:
+            try:
+                # Fallback to hash index
+                results = r.execute_command('FT.SEARCH', 'idx:docs_hash', search_query)
+            except Exception as hash_error:
+                print(f"Both search methods failed - JSON: {json_error}, Hash: {hash_error}")
+                return jsonify([]), 200
         
         docs = []
         if len(results) > 1:  # First element is count
@@ -303,16 +329,20 @@ def search_docs():
                     print(f"Error parsing document {doc_id}: {e}")
                     continue
         
-        return jsonify(docs)
+        return jsonify(docs), 200
     except Exception as e:
-        print(f"Search error: {e}")
+        print(f"Search endpoint error: {e}")
         return jsonify({"error": "Search failed"}), 500
 
 # --- Get document edit history (Streams)
-@app.route('/docs/<int:doc_id>/audit')
+@app.route('/docs/<int:doc_id>/audit', methods=['GET'])
 def get_audit(doc_id):
     """Get the edit history of a document."""
     try:
+        # Validate doc_id
+        if doc_id <= 0:
+            return jsonify({"error": "Invalid document ID"}), 400
+
         events = r.xrange(f'doc:{doc_id}:stream')
         audit_log = []
         for event in events:
@@ -346,7 +376,7 @@ def get_audit(doc_id):
 
             audit_log.append({"id": event_id, "values": event_values})
 
-        return jsonify(audit_log)
+        return jsonify(audit_log), 200
     except Exception as e:
         print(f"Error getting audit log for document {doc_id}: {e}")
         print(f"Error type: {type(e).__name__}")
