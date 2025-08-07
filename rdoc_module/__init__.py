@@ -20,10 +20,14 @@ try:
     from redis.commands.search.index_definition import IndexDefinition, IndexType
     from redis.commands.search import field
     SEARCH_AVAILABLE = True
-except ImportError:
+    print("✅ Redis Search modules imported successfully")
+except ImportError as e:
     # Fallback for older redis versions or when search is not available
     SEARCH_AVAILABLE = False
-    print("⚠️  Redis Search not available - search functionality will be limited")
+    IndexDefinition = None
+    IndexType = None
+    field = None
+    print(f"⚠️  Redis Search not available - search functionality will be limited: {e}")
 
 app = Flask(__name__)
 # Configure CORS for Replit and web access
@@ -101,8 +105,8 @@ except Exception as e:
 # --- Full-text search: CONFIGURE Redisearch index on document fields
 def create_search_index():
     """Create a Redisearch index for document fields."""
-    if not SEARCH_AVAILABLE:
-        print("⚠️  Skipping search index creation - Redis Search not available")
+    if not SEARCH_AVAILABLE or not IndexDefinition or not field:
+        print("⚠️  Skipping search index creation - Redis Search modules not available")
         return
         
     try:
