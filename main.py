@@ -23,11 +23,11 @@ def main():
     """Start the Flask server for Replit."""
     print("🚀 Starting Redis Document Management Server on Replit")
     print("=" * 60)
-    
+
     # Get port from environment (Replit sets this automatically)
     port = int(os.environ.get('PORT', 5000))
     host = '0.0.0.0'  # Required for Replit
-    
+
     print(f"🌐 Starting server on {host}:{port}")
     print("📋 Available endpoints:")
     print("   POST   /docs              - Create document")
@@ -35,7 +35,7 @@ def main():
     print("   GET    /docs/search?q=... - Search documents")
     print("   GET    /docs/<id>/audit   - Get document history")
     print("=" * 60)
-    
+
     try:
         # Start the Flask app (disable debug for production)
         app.run(host=host, port=port, debug=False)
