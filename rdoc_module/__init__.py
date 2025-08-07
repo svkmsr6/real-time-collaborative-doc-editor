@@ -204,21 +204,29 @@ def health_check():
 @app.route('/docs', methods=['POST'])
 def create_doc():
     """Create a new document in Redis JSON store."""
+    print(f"📝 POST /docs - Creating new document")
+    
     if not request.is_json:
+        print("❌ Request is not JSON")
         return jsonify({"error": "Invalid JSON"}), 400
 
     body = request.json
     if not body:
+        print("❌ Empty request body")
         return jsonify({"error": "Empty request body"}), 400
 
     try:
         doc_id = r.incr("next_doc_id")
         doc_key = f'doc:{doc_id}'
+        print(f"💾 Creating document with ID: {doc_id}")
+        
         # Redis JSON should accept Python dict directly
         r.json().set(doc_key, '$', body)
-        return jsonify({"doc_id": doc_id})
+        
+        print(f"✅ Document {doc_id} created successfully")
+        return jsonify({"doc_id": doc_id}), 201
     except Exception as e:
-        print(f"Error creating document: {e}")
+        print(f"❌ Error creating document: {e}")
         return jsonify({"error": "Failed to create document"}), 500
 
 # --- Get Document
