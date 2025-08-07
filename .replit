@@ -19,4 +19,4 @@ mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python start_server.py"
+args = "python3 start_server.py"
