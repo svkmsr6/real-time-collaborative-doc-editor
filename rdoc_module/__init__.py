@@ -339,46 +339,72 @@ def search_docs():
 def get_audit(doc_id):
     """Get the edit history of a document."""
     try:
+        print(f"🔍 Audit endpoint called for doc_id: {doc_id}")
+        
         # Validate doc_id
         if doc_id <= 0:
+            print(f"❌ Invalid document ID: {doc_id}")
             return jsonify({"error": "Invalid document ID"}), 400
 
-        events = r.xrange(f'doc:{doc_id}:stream')
+        # Check if the document exists first
+        doc_key = f'doc:{doc_id}'
+        if not r.exists(doc_key):
+            print(f"❌ Document {doc_id} does not exist")
+            return jsonify({"error": "Document not found"}), 404
+
+        # Get events from the stream
+        stream_key = f'doc:{doc_id}:stream'
+        print(f"🔍 Checking stream: {stream_key}")
+        
+        try:
+            events = r.xrange(stream_key)
+            print(f"📝 Found {len(events)} events in stream")
+        except Exception as stream_error:
+            print(f"⚠️  Stream read error: {stream_error}")
+            # Return empty audit log if stream doesn't exist or can't be read
+            return jsonify([]), 200
+
         audit_log = []
         for event in events:
-            # Decode the event ID
-            event_id = event[0].decode('utf-8') if isinstance(event[0], bytes) else event[0]
+            try:
+                # Decode the event ID
+                event_id = event[0].decode('utf-8') if isinstance(event[0], bytes) else str(event[0])
 
-            # Handle the event data dictionary
-            event_values = {}
-            for key, value in event[1].items():
-                # Decode bytes keys and values
-                decoded_key = key.decode('utf-8') if isinstance(key, bytes) else key
+                # Handle the event data dictionary
+                event_values = {}
+                for key, value in event[1].items():
+                    # Decode bytes keys and values
+                    decoded_key = key.decode('utf-8') if isinstance(key, bytes) else str(key)
 
-                # Handle different types of values
-                if isinstance(value, bytes):
-                    try:
-                        # Try to decode as UTF-8 string
-                        decoded_value = value.decode('utf-8')
-                        # Try to parse as JSON if it looks like JSON
-                        if decoded_value.startswith(('{', '[', '"')) or decoded_value in ('true', 'false', 'null'):
-                            try:
-                                decoded_value = json.loads(decoded_value)
-                            except json.JSONDecodeError:
-                                pass  # Keep as string if not valid JSON
-                    except UnicodeDecodeError:
-                        # If UTF-8 decoding fails, convert to string representation
-                        decoded_value = str(value)
-                else:
-                    decoded_value = value
+                    # Handle different types of values
+                    if isinstance(value, bytes):
+                        try:
+                            # Try to decode as UTF-8 string
+                            decoded_value = value.decode('utf-8')
+                            # Try to parse as JSON if it looks like JSON
+                            if decoded_value.startswith(('{', '[', '"')) or decoded_value in ('true', 'false', 'null'):
+                                try:
+                                    decoded_value = json.loads(decoded_value)
+                                except json.JSONDecodeError:
+                                    pass  # Keep as string if not valid JSON
+                        except UnicodeDecodeError:
+                            # If UTF-8 decoding fails, convert to string representation
+                            decoded_value = str(value)
+                    else:
+                        decoded_value = value
 
-                event_values[decoded_key] = decoded_value
+                    event_values[decoded_key] = decoded_value
 
-            audit_log.append({"id": event_id, "values": event_values})
+                audit_log.append({"id": event_id, "values": event_values})
+            except Exception as event_error:
+                print(f"⚠️  Error processing event: {event_error}")
+                continue
 
+        print(f"✅ Returning {len(audit_log)} audit entries")
         return jsonify(audit_log), 200
+        
     except Exception as e:
-        print(f"Error getting audit log for document {doc_id}: {e}")
+        print(f"❌ Error getting audit log for document {doc_id}: {e}")
         print(f"Error type: {type(e).__name__}")
         return jsonify({"error": "Failed to get audit log"}), 500
 
