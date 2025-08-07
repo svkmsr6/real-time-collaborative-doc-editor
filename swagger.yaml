@@ -1,0 +1,492 @@
+openapi: 3.0.3
+info:
+  title: Redis Document Management API
+  description: |
+    RESTful API for managing JSON documents in Redis with full-text search capabilities using Redisearch.
+    
+    This API supports:
+    - Creating and updating JSON documents
+    - Full-text search across document content
+    - Real-time updates via Pub/Sub
+    - Document change auditing using Redis Streams
+    - Integration with Redis Cloud
+    - Cross-Origin Resource Sharing (CORS) enabled for web applications
+    
+    The system is designed for high-performance document management with real-time collaboration features.
+    CORS is enabled to allow web applications from different domains to access the API.
+  version: 1.0.0
+  contact:
+    name: Redis Document Management API
+  license:
+    name: MIT
+    
+servers:
+  - url: http://localhost:5000
+    description: Local development server
+  - url: https://your-repl-name.your-username.repl.co
+    description: Replit production server (replace with your actual Replit URL)
+    
+tags:
+  - name: health
+    description: API health and status operations
+  - name: documents
+    description: Document management operations
+  - name: search
+    description: Document search operations
+  - name: audit
+    description: Document audit and history operations
+
+paths:
+  /:
+    get:
+      tags:
+        - health
+      summary: Health check endpoint
+      description: |
+        Returns the health status of the API and Redis connection.
+        Useful for monitoring and ensuring the service is running properly.
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  service:
+                    type: string
+                    example: "Redis Document Management API"
+                  version:
+                    type: string
+                    example: "1.0.0"
+                  redis:
+                    type: string
+                    example: "connected"
+                  endpoints:
+                    type: object
+                    additionalProperties: true
+                    example:
+                      create_document: "POST /docs"
+                      update_document: "PUT /docs/<id>"
+                      search_documents: "GET /docs/search?q=..."
+                      get_audit_history: "GET /docs/<id>/audit"
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "unhealthy"
+                  error:
+                    type: string
+                    example: "Redis connection failed"
+                  redis:
+                    type: string
+                    example: "disconnected"
+
+  /health:
+    get:
+      tags:
+        - health
+      summary: Alternative health check endpoint
+      description: Same as the root endpoint - returns health status
+      operationId: healthCheckAlt
+      responses:
+        '200':
+          $ref: '#/paths/~/get/responses/200'
+        '503':
+          $ref: '#/paths/~/get/responses/503'
+
+  /docs:
+    post:
+      tags:
+        - documents
+      summary: Create a new document
+      description: |
+        Creates a new JSON document in the Redis JSON store. The document is automatically 
+        assigned a unique ID and indexed for full-text search capabilities.
+      operationId: createDocument
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              example:
+                title: "Sample Document"
+                body: "This is a sample document content"
+                author: "John Doe"
+                tags: ["sample", "demo"]
+                metadata:
+                  created_date: "2025-08-07"
+                  category: "documentation"
+            examples:
+              simple_document:
+                summary: Simple document
+                value:
+                  title: "Meeting Notes"
+                  body: "Discussion about project timeline and deliverables"
+                  author: "Jane Smith"
+              complex_document:
+                summary: Complex document with nested data
+                value:
+                  title: "Product Specification"
+                  body: "Detailed specification for the new product features"
+                  author: "Product Team"
+                  sections:
+                    - name: "Overview"
+                      content: "Product overview and goals"
+                    - name: "Features"
+                      content: "List of key features"
+                  metadata:
+                    version: "1.0"
+                    status: "draft"
+      responses:
+        '200':
+          description: Document created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  doc_id:
+                    type: integer
+                    description: The unique ID assigned to the created document
+                    example: 123
+                required:
+                  - doc_id
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid_json:
+                  summary: Invalid JSON format
+                  value:
+                    error: "Invalid JSON"
+                empty_body:
+                  summary: Empty request body
+                  value:
+                    error: "Empty request body"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Failed to create document"
+
+  /docs/{doc_id}:
+    put:
+      tags:
+        - documents
+      summary: Update an existing document
+      description: |
+        Updates an existing document with new content. The update is broadcast via Redis Pub/Sub 
+        for real-time notifications and logged to Redis Streams for audit purposes.
+        
+        The entire document is replaced with the new content provided in the request body.
+      operationId: updateDocument
+      parameters:
+        - name: doc_id
+          in: path
+          required: true
+          description: The unique ID of the document to update
+          schema:
+            type: integer
+            minimum: 1
+          example: 123
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              example:
+                title: "Updated Document Title"
+                body: "Updated document content"
+                author: "John Doe"
+                last_modified: "2025-08-07T10:30:00Z"
+            examples:
+              content_update:
+                summary: Update document content
+                value:
+                  title: "Meeting Notes - Updated"
+                  body: "Updated discussion about project timeline and new requirements"
+                  author: "Jane Smith"
+                  last_modified: "2025-08-07T14:30:00Z"
+              status_update:
+                summary: Update document status
+                value:
+                  title: "Product Specification"
+                  body: "Final specification for the new product features"
+                  author: "Product Team"
+                  status: "approved"
+                  version: "2.0"
+      responses:
+        '200':
+          description: Document updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "updated"
+                required:
+                  - status
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid_json:
+                  summary: Invalid JSON format
+                  value:
+                    error: "Invalid JSON"
+                empty_body:
+                  summary: Empty request body
+                  value:
+                    error: "Empty request body"
+        '404':
+          description: Document not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Document not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Failed to update document"
+
+  /docs/search:
+    get:
+      tags:
+        - search
+      summary: Search documents using full-text search
+      description: |
+        Performs full-text search across all documents using Redisearch. 
+        The search is performed on document title and body fields with support for wildcards.
+        
+        Returns an array of matching documents with their complete content.
+      operationId: searchDocuments
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: |
+            Search query string. Supports full-text search with wildcards.
+            If not provided, returns an empty array.
+          schema:
+            type: string
+          examples:
+            simple_search:
+              summary: Simple keyword search
+              value: "meeting"
+            wildcard_search:
+              summary: Wildcard search
+              value: "product*"
+            phrase_search:
+              summary: Phrase search
+              value: "project timeline"
+      responses:
+        '200':
+          description: Search completed successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+                  description: Document object with dynamic fields
+                examples:
+                  search_results:
+                    summary: Sample search results
+                    value:
+                      - title: "Meeting Notes"
+                        body: "Discussion about project timeline"
+                        author: "Jane Smith"
+                        doc_id: 1
+                      - title: "Project Update"
+                        body: "Timeline updates and milestones"
+                        author: "John Doe"
+                        doc_id: 5
+                  empty_results:
+                    summary: No results found
+                    value: []
+        '500':
+          description: Search operation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Search failed"
+
+  /docs/{doc_id}/audit:
+    get:
+      tags:
+        - audit
+      summary: Get document edit history
+      description: |
+        Retrieves the complete edit history of a document from Redis Streams.
+        Returns a chronological list of all changes made to the document.
+        
+        Each entry includes a unique event ID and the values that were changed.
+      operationId: getDocumentAudit
+      parameters:
+        - name: doc_id
+          in: path
+          required: true
+          description: The unique ID of the document to get audit history for
+          schema:
+            type: integer
+            minimum: 1
+          example: 123
+      responses:
+        '200':
+          description: Audit history retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditLogEntry'
+                examples:
+                  audit_history:
+                    summary: Sample audit history
+                    value:
+                      - id: "1691404200000-0"
+                        values:
+                          title: "Initial Document"
+                          body: "Initial content"
+                          author: "John Doe"
+                      - id: "1691404800000-0"
+                        values:
+                          title: "Updated Document"
+                          body: "Updated content with more details"
+                          author: "John Doe"
+                          last_modified: "2025-08-07T10:30:00Z"
+                  empty_audit:
+                    summary: No audit entries
+                    value: []
+        '500':
+          description: Failed to retrieve audit history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Failed to get audit log"
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: "Document not found"
+      required:
+        - error
+    
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          description: |
+            Redis Stream event ID in the format timestamp-sequence.
+            Represents when the change was made.
+          example: "1691404200000-0"
+        values:
+          type: object
+          additionalProperties: true
+          description: |
+            The document fields that were changed in this event.
+            Can contain any document fields as key-value pairs.
+          example:
+            title: "Updated Document Title"
+            body: "New document content"
+            author: "John Doe"
+            timestamp: "2025-08-07T10:30:00Z"
+      required:
+        - id
+        - values
+    
+    DocumentBase:
+      type: object
+      description: |
+        Base schema for documents. Documents are flexible JSON objects
+        that can contain any fields, but commonly include title and body.
+      additionalProperties: true
+      properties:
+        title:
+          type: string
+          description: Document title (searchable)
+          example: "Sample Document"
+        body:
+          type: string
+          description: Document content (searchable)
+          example: "This is the main content of the document"
+        author:
+          type: string
+          description: Document author
+          example: "John Doe"
+      example:
+        title: "Sample Document"
+        body: "This is a sample document with searchable content"
+        author: "John Doe"
+        created_date: "2025-08-07"
+        tags: ["sample", "demo"]
+
+  responses:
+    BadRequest:
+      description: Invalid request format or parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    NotFound:
+      description: Requested resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+security: []
+
+externalDocs:
+  description: Redis JSON Documentation
+  url: https://redis.io/docs/data-types/json/

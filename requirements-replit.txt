@@ -1,0 +1,11 @@
+# Core Flask dependencies
+Flask==3.1.1
+flask-cors==6.0.1
+
+# Redis dependencies
+redis==6.3.0
+python-dotenv==1.1.1
+
+# Essential dependencies only
+requests==2.32.4
+Werkzeug==3.1.3
